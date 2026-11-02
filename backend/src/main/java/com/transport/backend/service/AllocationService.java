@@ -27,6 +27,12 @@ public class AllocationService {
         this.routePlanner = routePlanner;
     }
 
+    public synchronized void setTripIdSequence(long nextSeq) {
+        if (nextSeq > this.tripIdSequence) {
+            this.tripIdSequence = nextSeq;
+        }
+    }
+
     /**
      * Executes an allocation pass over waiting demand and currently available buses.
      *

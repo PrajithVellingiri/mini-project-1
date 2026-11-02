@@ -57,8 +57,7 @@ public class SimulationPersistenceService {
         try {
             return stopRepository.count() > 0
                     && roadRepository.count() > 0
-                    && busRepository.count() > 0
-                    && demandRequestRepository.count() > 0;
+                    && busRepository.count() > 0;
         } catch (Exception e) {
             log.warn("Could not check persisted data: {}", e.getMessage());
             return false;
@@ -75,10 +74,10 @@ public class SimulationPersistenceService {
         long busCount = busRepository.count();
         long demandCount = demandRequestRepository.count();
 
-        if (stopCount == 0 || roadCount == 0 || busCount == 0 || demandCount == 0) {
+        if (stopCount == 0 || roadCount == 0 || busCount == 0) {
             throw new InconsistentDatasetException(String.format(
                     "Incomplete dataset in database: stops=%d, roads=%d, buses=%d, demands=%d. " +
-                    "All four core reference tables must contain data for simulation hydration.",
+                    "Core infrastructure reference tables (stops, roads, buses) must contain data for simulation hydration.",
                     stopCount, roadCount, busCount, demandCount
             ));
         }
@@ -167,7 +166,7 @@ public class SimulationPersistenceService {
         // 3. Reconstruct Demand Queues & Demands
         DemandQueueService demandQueueService = new DemandQueueService();
         Map<String, DemandRequestEntity> demandEntityMap = new HashMap<>();
-        int totalInitialPassengers = 0;
+        int totalDemandPax = 0;
         int waitingPassengers = 0;
 
         List<DemandRequestEntity> allDemandEntities = demandRequestRepository.findAllByOrderByOriginalArrivalOrderAsc();
@@ -200,7 +199,7 @@ public class SimulationPersistenceService {
                 ));
             }
 
-            totalInitialPassengers += de.getPassengerCount();
+            totalDemandPax += de.getPassengerCount();
 
             if (!"FULLY_SERVED".equalsIgnoreCase(de.getServiceStatus()) && de.getRemainingPassengerCount() > 0) {
                 waitingPassengers += de.getRemainingPassengerCount();
@@ -225,9 +224,18 @@ public class SimulationPersistenceService {
         int inTransitPassengers = 0;
         int completedPassengers = 0;
         int cancelledPassengers = 0;
+        long maxTripSeq = 0;
 
         List<ReliefTripEntity> allTrips = reliefTripRepository.findAll();
         for (ReliefTripEntity te : allTrips) {
+            if (te.getTripId() != null && te.getTripId().startsWith("TRIP-")) {
+                try {
+                    long seq = Long.parseLong(te.getTripId().substring(5));
+                    if (seq > maxTripSeq) {
+                        maxTripSeq = seq;
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
             TripStatus tripStatus;
             try {
                 tripStatus = TripStatus.valueOf(te.getStatus().toUpperCase());
@@ -368,7 +376,10 @@ public class SimulationPersistenceService {
             }
         }
 
-        int systemAccounted = waitingPassengers + inTransitPassengers + completedPassengers + cancelledPassengers;
+        // Net unique passenger intake: total demands minus recycled stranded passengers from cancelled trips
+        int totalInitialPassengers = totalDemandPax - cancelledPassengers;
+
+        int systemAccounted = waitingPassengers + inTransitPassengers + completedPassengers;
         if (systemAccounted != totalInitialPassengers) {
             throw new InconsistentDatasetException(String.format(
                     "System-wide passenger conservation violated: totalInitial=%d, waiting=%d, inTransit=%d, completed=%d, cancelled=%d (sum=%d)",
@@ -384,7 +395,8 @@ public class SimulationPersistenceService {
                 demandQueueService,
                 activeTrips,
                 totalInitialPassengers,
-                (inTransitPassengers + completedPassengers)
+                (inTransitPassengers + completedPassengers),
+                maxTripSeq + 1
         );
     }
 
@@ -576,6 +588,20 @@ public class SimulationPersistenceService {
             DemandQueueService demandQueueService,
             List<ReliefTrip> activeTrips,
             int totalInitialPassengers,
-            int totalAllocatedPassengers
-    ) {}
+            int totalAllocatedPassengers,
+            long nextTripSequence
+    ) {
+        public LoadedDataset(
+                RoadNetwork roadNetwork,
+                List<Stop> stops,
+                List<Road> roads,
+                List<Bus> buses,
+                DemandQueueService demandQueueService,
+                List<ReliefTrip> activeTrips,
+                int totalInitialPassengers,
+                int totalAllocatedPassengers
+        ) {
+            this(roadNetwork, stops, roads, buses, demandQueueService, activeTrips, totalInitialPassengers, totalAllocatedPassengers, 1L);
+        }
+    }
 }

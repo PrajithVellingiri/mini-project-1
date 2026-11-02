@@ -268,4 +268,92 @@ class SimulationPersistenceHydrationTest {
         assertEquals(0, reloaded.totalAllocatedPassengers());
         assertEquals(23, reloaded.demandQueueService().size());
     }
+
+    @Test
+    @DisplayName("10. BUG-DB-01: Post-breakdown cancellation and emergency relief demand persistence survives reload with invariant preserved")
+    void testBreakdownPersistenceAndConservationOnReload() {
+        databaseSeeder.seedIfEmpty();
+
+        // 1. Simulate an allocation run where BUS-01 was dispatched on TRIP-0001 for DEM-01 (25 pax)
+        DemandRequestEntity dem01 = demandRequestRepository.findById("DEM-01").orElseThrow();
+        dem01.setRemainingPassengerCount(0);
+        dem01.setServiceStatus("FULLY_SERVED");
+        demandRequestRepository.save(dem01);
+
+        ReliefTripEntity tripEntity = new ReliefTripEntity(
+                "TRIP-0001",
+                "BUS-01",
+                "DEM-01",
+                null,
+                "S1",
+                "S2",
+                25,
+                6.0,
+                "CANCELLED", // Trip cancelled due to breakdown
+                java.time.LocalDateTime.now(),
+                java.time.LocalDateTime.now()
+        );
+        reliefTripRepository.save(tripEntity);
+
+        // 2. Bus updated to MAINTENANCE with 0 occupancy
+        BusEntity bus01 = busRepository.findById("BUS-01").orElseThrow();
+        bus01.setStatus("MAINTENANCE");
+        bus01.setPassengerOccupancy(0);
+        busRepository.save(bus01);
+
+        // 3. Emergency relief demand persisted for the 25 stranded passengers
+        DemandRequest emergencyDemand = new DemandRequest(
+                "DEM-EMG-TRIP-0001",
+                new Stop("S1", "Downtown Hub"),
+                new Stop("S2", "Central Station"),
+                25,
+                0L // Top emergency priority
+        );
+        persistenceService.persistDemandRequest(emergencyDemand);
+
+        // 4. Reload dataset from persistence (simulating application restart after incident)
+        SimulationPersistenceService.LoadedDataset reloaded = assertDoesNotThrow(
+                () -> persistenceService.loadDataset(),
+                "Reloading persisted state after breakdown must not violate system-wide conservation invariant"
+        );
+
+        assertNotNull(reloaded);
+        // Total initial passengers must remain 520 (DEM-EMG represents recycled stranded passengers, not net-new intake)
+        assertEquals(520, reloaded.totalInitialPassengers(), "Emergency demand must not inflate initial intake");
+        // Waiting passengers must be 520 (495 from other demands + 25 re-queued stranded passengers)
+        assertEquals(520, reloaded.demandQueueService().getTotalWaitingPassengers());
+        // In-transit passengers = 0, completed = 0, totalAllocated = 0
+        assertEquals(0, reloaded.totalAllocatedPassengers());
+        assertEquals(22, reloaded.demandQueueService().size(), "21 original unserved + 1 emergency relief demand");
+    }
+
+    @Test
+    @DisplayName("11. BUG-DB-02: Zero pending demands in database hydrates cleanly without throwing InconsistentDatasetException")
+    void testHydrationWithZeroDemands() {
+        // Clear all demands
+        demandRequestRepository.deleteAll();
+        busRepository.deleteAll();
+        roadRepository.deleteAll();
+        stopRepository.deleteAll();
+
+        // Seed only infrastructure (stops, roads, buses)
+        stopRepository.save(new StopEntity("DEPOT", "Central Transit Depot", true));
+        stopRepository.save(new StopEntity("S1", "Station 1", false));
+        roadRepository.save(new RoadEntity("DEPOT", "S1", 8.0, false));
+        busRepository.save(new BusEntity("BUS-01", "STANDARD_BUS", 40, false, "DEPOT", "AVAILABLE", 0));
+
+        assertEquals(0, demandRequestRepository.count());
+
+        SimulationPersistenceService.LoadedDataset dataset = assertDoesNotThrow(
+                () -> persistenceService.loadDataset(),
+                "Database with 0 demands must hydrate cleanly as a ready system with empty queue"
+        );
+
+        assertNotNull(dataset);
+        assertEquals(0, dataset.totalInitialPassengers());
+        assertEquals(0, dataset.demandQueueService().getTotalWaitingPassengers());
+        assertTrue(dataset.demandQueueService().isEmpty());
+        assertEquals(1, dataset.buses().size());
+        assertEquals(2, dataset.roadNetwork().getStopCount());
+    }
 }

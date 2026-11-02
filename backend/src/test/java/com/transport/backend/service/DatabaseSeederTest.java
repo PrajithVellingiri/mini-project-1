@@ -103,4 +103,23 @@ class DatabaseSeederTest {
         assertEquals(1, busRepository.count());
         assertTrue(busRepository.existsById("BUS-CUSTOM"));
     }
+
+    @Test
+    @DisplayName("5. BUG-DB-02: Valid infrastructure with zero pending demands evaluates as POPULATED and preserves state")
+    void testZeroPendingDemandsEvaluatesAsPopulated() {
+        // Stops, roads, and fleet exist, but demand queue is empty (all demands completed or none injected)
+        stopRepository.save(new StopEntity("DEPOT", "Central Depot", true));
+        stopRepository.save(new StopEntity("S1", "Stop 1", false));
+        roadRepository.save(new RoadEntity("DEPOT", "S1", 5.0, false));
+        busRepository.save(new BusEntity("BUS-01", "STANDARD_BUS", 40, false, "DEPOT", "AVAILABLE", 0));
+        // demandRequestRepository has 0 rows
+
+        assertEquals(0, demandRequestRepository.count());
+        assertEquals(DatabaseSeeder.DatabaseState.POPULATED, databaseSeeder.evaluateDatabaseState(),
+                "Infrastructure presence with 0 demands must be considered a valid POPULATED database");
+
+        assertDoesNotThrow(() -> databaseSeeder.seedIfEmpty(),
+                "Zero demands must not trigger InconsistentDatasetException or wipe the database");
+        assertEquals(1, busRepository.count(), "Custom fleet must be preserved");
+    }
 }

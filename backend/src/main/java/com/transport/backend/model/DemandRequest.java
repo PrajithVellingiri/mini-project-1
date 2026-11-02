@@ -73,6 +73,14 @@ public class DemandRequest {
     }
 
     /**
+     * Checks if this demand batch is an emergency relief request
+     * (e.g. stranded passengers from a broken-down transit bus).
+     */
+    public boolean isEmergency() {
+        return this.originalArrivalOrder == 0L || this.requestId.startsWith("DEM-EMG-");
+    }
+
+    /**
      * Partially serves a portion of this passenger batch, reducing passenger count
      * while strictly maintaining the original arrival order for future ranking.
      *

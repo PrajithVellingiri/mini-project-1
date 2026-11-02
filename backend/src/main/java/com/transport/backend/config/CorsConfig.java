@@ -8,24 +8,24 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import java.util.Arrays;
 
 /**
- * Production-ready Cross-Origin Resource Sharing (CORS) configuration.
- * Allows requests from local development servers as well as cloud-hosted frontend instances (e.g., Vercel, Netlify).
+ * Production-ready and Local Port-Forwarding Cross-Origin Resource Sharing (CORS) configuration.
+ * Allows requests from local development servers, VS Code forwarded tunnels, and cloud-hosted instances.
  */
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
 
-    @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173}")
+    @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,https://*.github.dev,https://*.app.github.dev,https://*.visualstudio.com,https://*.tunnels.api.visualstudio.com,https://*.devtunnels.ms}")
     private String allowedOrigins;
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        String[] origins = Arrays.stream(allowedOrigins.split(","))
+        String[] patterns = Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .toArray(String[]::new);
 
         registry.addMapping("/api/**")
-                .allowedOrigins(origins)
+                .allowedOriginPatterns(patterns)
                 .allowedMethods("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(false)

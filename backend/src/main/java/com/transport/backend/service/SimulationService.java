@@ -47,6 +47,7 @@ public class SimulationService {
         this.routePlanner = new RoutePlanner(this.roadNetwork);
         this.demandQueueService = dataset.demandQueueService();
         this.allocationService = new AllocationService(this.routePlanner);
+        this.allocationService.setTripIdSequence(dataset.nextTripSequence());
 
         this.buses.clear();
         this.buses.addAll(dataset.buses());
@@ -518,12 +519,13 @@ public class SimulationService {
                 bus.clearPassengers();
             }
 
-            // 3. Deduct stranded pax from totalAllocatedPassengers to preserve invariant:
+            // 3. Deduct uncompleted stranded pax from totalAllocatedPassengers to preserve invariant:
             // Total = Waiting + In-Transit + Completed
-            totalAllocatedPassengers = Math.max(0, totalAllocatedPassengers - strandedPax);
+            boolean arrivedAtDestination = strandedStop.getId().equalsIgnoreCase(originalDestination.getId());
+            if (strandedPax > 0 && !arrivedAtDestination) {
+                totalAllocatedPassengers = Math.max(0, totalAllocatedPassengers - strandedPax);
 
-            // 4. Generate emergency relief demand for stranded passengers
-            if (strandedPax > 0 && !strandedStop.getId().equalsIgnoreCase(originalDestination.getId())) {
+                // 4. Generate emergency relief demand for stranded passengers
                 reliefDemandId = "DEM-EMG-" + cancelledTripId;
                 DemandRequest reliefDemand = new DemandRequest(
                         reliefDemandId,

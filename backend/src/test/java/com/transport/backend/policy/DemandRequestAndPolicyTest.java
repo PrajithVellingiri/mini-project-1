@@ -82,4 +82,34 @@ class DemandRequestAndPolicyTest {
         assertEquals("D4", queue.poll().getRequestId());
         assertTrue(queue.isEmpty());
     }
+
+    @Test
+    @DisplayName("BUG-ALGO-01: Emergency relief request (Priority 0) strictly preempts larger standard requests")
+    void shouldPrioritizeEmergencyRequestOverLargerStandardBatches() {
+        DemandRequest standardLarge = new DemandRequest("STD-LARGE", stopA, stopB, 45, 10L);
+        DemandRequest standardMedium = new DemandRequest("STD-MED", stopA, stopC, 30, 5L);
+        DemandRequest emergencySmall = new DemandRequest("DEM-EMG-TRIP-1", stopB, stopC, 12, 0L);
+
+        assertTrue(emergencySmall.isEmergency(), "Emergency batch must be identified by arrivalOrder=0 or DEM-EMG prefix");
+        assertFalse(standardLarge.isEmergency());
+
+        PriorityQueue<DemandRequest> queue = new PriorityQueue<>(policy);
+        queue.add(standardLarge);
+        queue.add(standardMedium);
+        queue.add(emergencySmall);
+
+        // Emergency request (12 pax) MUST be dequeued before standardLarge (45 pax)
+        DemandRequest first = queue.poll();
+        assertNotNull(first);
+        assertEquals("DEM-EMG-TRIP-1", first.getRequestId(), "Emergency request must be evaluated first regardless of lower passenger count");
+
+        DemandRequest second = queue.poll();
+        assertNotNull(second);
+        assertEquals("STD-LARGE", second.getRequestId(), "Among standard requests, larger count (45) comes first");
+
+        DemandRequest third = queue.poll();
+        assertNotNull(third);
+        assertEquals("STD-MED", third.getRequestId());
+        assertTrue(queue.isEmpty());
+    }
 }

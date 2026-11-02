@@ -118,51 +118,95 @@ The backend exposes **16 REST endpoints** supporting full simulation, interactiv
 
 ---
 
-## 5. Local Setup & Quickstart Guide
+## 5. Local Development Setup & VS Code Port Forwarding Guide
 
 ### Prerequisites
 - **JDK 21** installed (`java -version` returns 21+).
 - **Node.js 18+** installed (`node -v`).
-- **MySQL 8.0+** running locally (or automated tests using in-memory H2).
+- **Database**: Local MySQL 8.0+ or an existing TiDB Cloud Serverless instance.
 
-### Step 1: Clone and Configure Database
-1. Open MySQL Workbench or MySQL CLI:
-   ```cmd
-   mysql -u root -p < database/smart_transport_db.sql
-   ```
-2. Verify tables were created:
-   ```sql
-   USE smart_transport_db;
-   SHOW TABLES; -- 8 tables: stops, roads, buses, demand_requests, relief_trips, etc.
-   ```
+---
 
-### Step 2: Start the Backend (Spring Boot)
-1. Open terminal in `backend/`:
-   ```cmd
-   cd backend
-   set DB_PASSWORD=your_mysql_password
-   mvnw.cmd spring-boot:run
-   ```
-   *(On PowerShell)*:
-   ```powershell
-   cd backend
-   $env:DB_PASSWORD="your_mysql_password"
-   .\mvnw.cmd spring-boot:run
-   ```
-2. Verify backend is running:
-   ```text
-   curl http://localhost:8080/api/health
-   # Response: {"status":"UP","application":"Smart Public Transportation Route Optimization"}
-   ```
+### Step 1: Configure Environment Variables (Without Exposing Credentials)
 
-### Step 3: Start the Frontend (React + Vite)
-1. Open a second terminal in `frontend/`:
-   ```cmd
-   cd frontend
-   npm install
-   npm run dev
-   ```
-2. Open your browser at **`http://localhost:5173`**.
+#### A. Database Connection (Local MySQL or TiDB Cloud)
+Set your database credentials in your PowerShell session before running the backend:
+
+**Option 1: Connecting to Local MySQL**
+```powershell
+$env:DB_HOST="localhost"
+$env:DB_PORT="3306"
+$env:DB_NAME="smart_transport_db"
+$env:DB_USER="root"
+$env:DB_PASSWORD="your_mysql_password"
+```
+
+**Option 2: Connecting to TiDB Cloud Serverless**
+```powershell
+$env:DB_HOST="gateway01.us-east-1.prod.aws.tidbcloud.com" # (Your TiDB gateway)
+$env:DB_PORT="4000"
+$env:DB_NAME="smart_transport_db"
+$env:DB_USER="your_cluster_user.root"
+$env:DB_PASSWORD="your_tidb_password"
+$env:DATABASE_URL="jdbc:mysql://${env:DB_HOST}:${env:DB_PORT}/${env:DB_NAME}?useSSL=true&serverTimezone=UTC&allowPublicKeyRetrieval=true"
+```
+
+#### B. Frontend API Target
+The frontend is pre-configured with `frontend/.env.local`:
+```env
+VITE_API_BASE_URL=http://localhost:8080
+```
+*(Leave blank to use the local Vite `/api` proxy, or set to forwarded port/URL if accessing remotely).*
+
+---
+
+### Step 2: Start the Backend (Spring Boot on Port 8080)
+Open a new Windows PowerShell terminal in VS Code:
+```powershell
+cd backend
+.\mvnw.cmd spring-boot:run
+```
+> **Verification**: Test the health endpoint in your browser or a second terminal:
+> ```powershell
+> curl http://localhost:8080/api/health
+> # Output: {"application":"Smart Public Transportation Route Optimization","status":"UP"}
+> ```
+
+---
+
+### Step 3: Start the Frontend (Vite on Port 5173)
+Open a separate Windows PowerShell terminal in VS Code:
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+Vite will bind to `0.0.0.0:5173` with network access enabled.
+
+---
+
+### Step 4: VS Code Port Forwarding Setup
+
+In VS Code, navigate to the **Ports** tab (in the bottom panel next to Terminal):
+
+| Service | Local Port | Forwarded Port | Visibility | Purpose |
+| :--- | :---: | :---: | :---: | :--- |
+| **Spring Boot API** | `8080` | `8080` | Private / Forwarded | Core REST API, Dijkstra route planning, and simulation engine. |
+| **React SPA (Vite)** | `5173` | `5173` | Private / Forwarded | Interactive transit dashboard and SVG map. |
+
+1. Click **Add Port** $\to$ enter `8080` $\to$ verify it points to `localhost:8080`.
+2. Click **Add Port** $\to$ enter `5173` $\to$ verify it points to `localhost:5173`.
+3. Open the forwarded address for port `5173` in your browser.
+
+> **Tip**: You can also launch both services using VS Code's Command Palette (`Ctrl+Shift+P` $\to$ `Tasks: Run Task` $\to$ select `Start Backend (Spring Boot)` or `Start Frontend (Vite)`).
+
+---
+
+### Step 5: Verify End-to-End Local Connectivity
+1. Open `http://localhost:5173` (or the forwarded port 5173 URL).
+2. The top navigation bar displays a green badge: **Backend Online (X ms)**.
+3. Operations Overview shows live KPI cards (13 Stops, 38 Roads, 4 Fleet Buses, 22 Queued Demand Batches).
+4. Run an allocation pass or test a route in the Route Optimization Lab to verify full stack execution.
 
 ---
 

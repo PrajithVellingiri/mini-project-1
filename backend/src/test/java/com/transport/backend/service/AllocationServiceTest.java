@@ -335,4 +335,27 @@ class AllocationServiceTest {
         assertEquals(3, combinedSameStop.size());
         assertEquals(List.of(stopA, stopB, stopC), combinedSameStop);
     }
+
+    @Test
+    @DisplayName("15. BUG-ALGO-01: Available bus dispatches to emergency relief demand first before larger routine batches")
+    void shouldDispatchAvailableBusToEmergencyReliefFirst() {
+        // Routine demand with large volume (40 pax)
+        DemandRequest routineLarge = new DemandRequest("REQ-ROUTINE-40", stopA, stopB, 40, 10L);
+        // Emergency relief demand with smaller volume (15 pax)
+        DemandRequest emergencyRelief = new DemandRequest("DEM-EMG-TRIP-99", stopD, stopB, 15, 0L);
+
+        queueService.enqueue(routineLarge);
+        queueService.enqueue(emergencyRelief);
+
+        // Exactly 1 bus available at depot
+        Bus bus = new StandardBus("BUS-01", 50, depot);
+        AllocationResult result = allocationService.allocate(List.of(bus), queueService);
+
+        assertEquals(1, result.getAssignedTripCount());
+        assertEquals("DEM-EMG-TRIP-99-boarded", result.getAssignedTrips().get(0).getDemandRequest().getRequestId(),
+                "Emergency relief request must receive the available bus ahead of larger routine demand");
+        assertEquals(15, result.getAllocatedPassengerCount());
+        assertEquals(40, result.getPendingPassengerCount());
+        assertEquals("REQ-ROUTINE-40", result.getPendingDemands().get(0).getRequestId());
+    }
 }

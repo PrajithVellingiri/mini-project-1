@@ -60,7 +60,9 @@ public class DatabaseSeeder {
             return DatabaseState.EMPTY;
         }
 
-        if (stopCount > 0 && roadCount > 0 && busCount > 0 && demandCount > 0) {
+        // Core reference infrastructure (stops, roads, buses) must be present.
+        // Pending or historical passenger demands can be zero if all demands have been processed or none injected yet.
+        if (stopCount > 0 && roadCount > 0 && busCount > 0 && demandCount >= 0) {
             return DatabaseState.POPULATED;
         }
 
@@ -92,7 +94,7 @@ public class DatabaseSeeder {
             case INCONSISTENT -> {
                 String diagnostic = String.format(
                         "Inconsistent database state detected: stops=%d, roads=%d, buses=%d, demands=%d. " +
-                        "Core reference tables are partially populated. Aborting startup to prevent state corruption.",
+                        "Core reference infrastructure tables (stops, roads, buses) are partially populated. Aborting startup to prevent state corruption.",
                         stopCount, roadCount, busCount, demandCount
                 );
                 log.error(diagnostic);
