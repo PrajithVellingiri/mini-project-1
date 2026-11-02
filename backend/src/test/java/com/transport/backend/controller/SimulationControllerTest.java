@@ -13,19 +13,47 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+
+import com.transport.backend.config.UserSeederService;
+import com.transport.backend.entity.UserEntity;
+import com.transport.backend.repository.UserRepository;
+import com.transport.backend.security.CustomUserDetails;
+import com.transport.backend.security.JwtService;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 
 @SpringBootTest
-@AutoConfigureMockMvc
 class SimulationControllerTest {
 
     @Autowired
-    private MockMvc mockMvc;
+    private WebApplicationContext context;
 
     @Autowired
     private SimulationService simulationService;
 
+    @Autowired
+    private JwtService jwtService;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private UserSeederService userSeederService;
+
+    private MockMvc mockMvc;
+
     @BeforeEach
     void resetState() {
+        userSeederService.seedDemoUsersIfEnabled();
+        UserEntity admin = userRepository.findByEmailIgnoreCase("admin@smarttransport.demo").orElseThrow();
+        String adminToken = "Bearer " + jwtService.generateToken(new CustomUserDetails(admin));
+
+        this.mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(springSecurity())
+                .defaultRequest(get("/").header("Authorization", adminToken))
+                .build();
+
         simulationService.resetSimulation();
     }
 

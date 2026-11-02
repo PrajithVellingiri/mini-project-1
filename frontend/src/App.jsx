@@ -1,4 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import LandingPage from './components/landing/LandingPage';
+import LoginPage from './components/auth/LoginPage';
+import Navbar from './components/common/Navbar';
+import AccessDenied from './components/common/AccessDenied';
+import OperationsOverview from './components/overview/OperationsOverview';
+import PassengerHub from './components/passenger/PassengerHub';
+import DriverCockpit from './components/driver/DriverCockpit';
+import UserManagement from './components/admin/UserManagement';
+import TransportationMap from './components/network/TransportationMap';
+import RouteOptimizationLab from './components/routing/RouteOptimizationLab';
+import TrafficConsole from './components/traffic/TrafficConsole';
+import FleetDemandManager from './components/fleet/FleetDemandManager';
+import AnalyticsDashboard from './components/analytics/AnalyticsDashboard';
 import {
   fetchHealth,
   fetchSimulationState,
@@ -13,16 +27,12 @@ import {
   triggerBusBreakdown,
   restoreBus,
 } from './api/client';
-import Navbar from './components/common/Navbar';
-import OperationsOverview from './components/overview/OperationsOverview';
-import TransportationMap from './components/network/TransportationMap';
-import RouteOptimizationLab from './components/routing/RouteOptimizationLab';
-import TrafficConsole from './components/traffic/TrafficConsole';
-import FleetDemandManager from './components/fleet/FleetDemandManager';
-import AnalyticsDashboard from './components/analytics/AnalyticsDashboard';
+import { Loader2, AlertCircle } from 'lucide-react';
 import './App.css';
 
-export default function App() {
+function AuthenticatedDashboard({ onNavigateHome }) {
+  const { user, role, isAuthenticated } = useAuth();
+
   const [activeTab, setActiveTab] = useState('overview');
   const [healthState, setHealthState] = useState({
     status: 'loading',
@@ -61,6 +71,7 @@ export default function App() {
   }, []);
 
   const loadSimulationState = useCallback(async () => {
+    if (!isAuthenticated) return;
     setSimLoading(true);
     setSimError(null);
     const result = await fetchSimulationState();
@@ -70,12 +81,30 @@ export default function App() {
       setSimError(result.error);
     }
     setSimLoading(false);
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     checkHealth();
-    loadSimulationState();
-  }, [checkHealth, loadSimulationState]);
+  }, [checkHealth]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadSimulationState();
+    }
+  }, [isAuthenticated, loadSimulationState]);
+
+  // Adjust activeTab if role changes and tab is not allowed
+  useEffect(() => {
+    if (role === 'PASSENGER' || role === 'DRIVER') {
+      if (['traffic', 'fleet', 'analytics', 'users'].includes(activeTab)) {
+        setActiveTab('overview');
+      }
+    } else if (role === 'TRANSPORT_MANAGER') {
+      if (activeTab === 'users') {
+        setActiveTab('overview');
+      }
+    }
+  }, [role, activeTab]);
 
   const showToast = (message, type = 'info') => {
     setToastMessage({ message, type });
@@ -211,6 +240,7 @@ export default function App() {
           checkHealth();
           loadSimulationState();
         }}
+        onNavigateHome={onNavigateHome}
       />
 
       {/* Floating Toast Notification */}
@@ -226,26 +256,43 @@ export default function App() {
       <main className="main-content">
         {simError && (
           <div className="error-banner">
-            <span className="error-icon">⚠️</span>
+            <AlertCircle size={20} className="error-icon text-red-500" />
             <span>{simError}</span>
             <button className="retry-btn" onClick={loadSimulationState}>Retry</button>
           </div>
         )}
 
+        {/* Tab 1: Overview / Role Hub */}
         {activeTab === 'overview' && (
-          <OperationsOverview
-            summary={summary}
-            buses={buses}
-            trips={trips}
-            demands={pendingDemands}
-            onRunSimulation={handleRunSimulation}
-            onResetSimulation={handleResetSimulation}
-            onCompleteAllTrips={handleCompleteAllTrips}
-            onSelectTab={setActiveTab}
-            simLoading={simLoading}
-          />
+          role === 'PASSENGER' ? (
+            <PassengerHub
+              simState={simState}
+              onNavigateToRoute={() => setActiveTab('routing')}
+            />
+          ) : role === 'DRIVER' ? (
+            <DriverCockpit
+              simState={simState}
+              onCompleteTrip={handleCompleteSpecificTrip}
+              onUpdateStatus={handleUpdateBusStatus}
+              onRestoreBus={handleRestoreBus}
+            />
+          ) : (
+            <OperationsOverview
+              summary={summary}
+              buses={buses}
+              trips={trips}
+              demands={pendingDemands}
+              onRunSimulation={handleRunSimulation}
+              onResetSimulation={handleResetSimulation}
+              onCompleteAllTrips={handleCompleteAllTrips}
+              onSelectTab={setActiveTab}
+              simLoading={simLoading}
+              canReset={role === 'ADMIN'}
+            />
+          )
         )}
 
+        {/* Tab 2: Network Map */}
         {activeTab === 'network' && (
           <TransportationMap
             stops={stops}
@@ -254,12 +301,17 @@ export default function App() {
             trips={trips}
             highlightPath={highlightedPath}
             onSelectStop={(stopId) => showToast(`Station selected: ${stopId}`)}
-            onSelectRoad={(road) => {
-              setActiveTab('traffic');
+            onSelectRoad={() => {
+              if (['ADMIN', 'TRANSPORT_MANAGER'].includes(role)) {
+                setActiveTab('traffic');
+              } else {
+                showToast('Traffic configuration console requires Transport Manager or Admin role.', 'warning');
+              }
             }}
           />
         )}
 
+        {/* Tab 3: Route Optimization Lab */}
         {activeTab === 'routing' && (
           <RouteOptimizationLab
             stops={stops}
@@ -270,32 +322,56 @@ export default function App() {
           />
         )}
 
+        {/* Tab 4: Traffic Console (Admin & Transport Manager only) */}
         {activeTab === 'traffic' && (
-          <TrafficConsole
-            roads={roads}
-            onUpdateTravelTime={handleUpdateRoadTravelTime}
-            onUpdateRoadStatus={handleUpdateRoadStatus}
-            onResetRoads={handleResetSimulation}
-          />
+          ['ADMIN', 'TRANSPORT_MANAGER'].includes(role) ? (
+            <TrafficConsole
+              roads={roads}
+              onUpdateTravelTime={handleUpdateRoadTravelTime}
+              onUpdateRoadStatus={handleUpdateRoadStatus}
+              onResetRoads={handleResetSimulation}
+            />
+          ) : (
+            <AccessDenied onReturn={() => setActiveTab('overview')} requiredRole="TRANSPORT_MANAGER" />
+          )
         )}
 
+        {/* Tab 5: Fleet & Demand Console (Admin & Transport Manager only) */}
         {activeTab === 'fleet' && (
-          <FleetDemandManager
-            buses={buses}
-            stops={stops}
-            demands={pendingDemands}
-            trips={trips}
-            onUpdateBusStatus={handleUpdateBusStatus}
-            onCreateDemand={handleCreateDemand}
-            onCompleteTrip={handleCompleteSpecificTrip}
-            onCompleteAllTrips={handleCompleteAllTrips}
-            onTriggerBreakdown={handleTriggerBreakdown}
-            onRestoreBus={handleRestoreBus}
-          />
+          ['ADMIN', 'TRANSPORT_MANAGER'].includes(role) ? (
+            <FleetDemandManager
+              buses={buses}
+              stops={stops}
+              demands={pendingDemands}
+              trips={trips}
+              onUpdateBusStatus={handleUpdateBusStatus}
+              onCreateDemand={handleCreateDemand}
+              onCompleteTrip={handleCompleteSpecificTrip}
+              onCompleteAllTrips={handleCompleteAllTrips}
+              onTriggerBreakdown={handleTriggerBreakdown}
+              onRestoreBus={handleRestoreBus}
+            />
+          ) : (
+            <AccessDenied onReturn={() => setActiveTab('overview')} requiredRole="TRANSPORT_MANAGER" />
+          )
         )}
 
+        {/* Tab 6: Analytics & Telemetry (Admin & Transport Manager only) */}
         {activeTab === 'analytics' && (
-          <AnalyticsDashboard />
+          ['ADMIN', 'TRANSPORT_MANAGER'].includes(role) ? (
+            <AnalyticsDashboard />
+          ) : (
+            <AccessDenied onReturn={() => setActiveTab('overview')} requiredRole="TRANSPORT_MANAGER" />
+          )
+        )}
+
+        {/* Tab 7: User Management (Admin only) */}
+        {activeTab === 'users' && (
+          role === 'ADMIN' ? (
+            <UserManagement />
+          ) : (
+            <AccessDenied onReturn={() => setActiveTab('overview')} requiredRole="ADMIN" />
+          )
         )}
       </main>
 
@@ -305,9 +381,95 @@ export default function App() {
           <strong>Smart Public Transportation Route Optimization</strong> — Vetrinagar Urban Transit Network
         </div>
         <div className="footer-meta">
-          <span>Java 21 &bull; Spring Boot 4.1.1 &bull; React 19 &bull; MySQL 8.0.46</span>
+          <span>Logged in as: <strong>{user?.fullName}</strong> ({role}) &bull; Active Role-Based Session</span>
         </div>
       </footer>
     </div>
+  );
+}
+
+function AppContent() {
+  const { isAuthenticated, loading: authLoading } = useAuth();
+  const [currentPath, setCurrentPath] = useState(() => {
+    return window.location.pathname || '/';
+  });
+
+  const navigate = useCallback((targetPath) => {
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+    setCurrentPath(targetPath);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname || '/');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // When auth state settles, if authenticated user is on /login, forward to /dashboard
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && currentPath === '/login') {
+      navigate('/dashboard');
+    }
+  }, [authLoading, isAuthenticated, currentPath, navigate]);
+
+  // Initial token verification screen
+  if (authLoading) {
+    return (
+      <div className="full-screen-loader">
+        <div className="loader-box">
+          <Loader2 size={36} className="animate-spin text-indigo-600 mx-auto" />
+          <h2 className="loader-title">SmartTransit Portal</h2>
+          <p className="loader-sub">Verifying security credentials...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 1. Path is /login
+  if (currentPath === '/login') {
+    if (isAuthenticated) {
+      return <AuthenticatedDashboard onNavigateHome={() => navigate('/')} />;
+    }
+    return (
+      <LoginPage
+        onNavigateHome={() => navigate('/')}
+        onLoginSuccess={() => navigate('/dashboard')}
+      />
+    );
+  }
+
+  // 2. Path is /dashboard
+  if (currentPath === '/dashboard') {
+    if (!isAuthenticated) {
+      return (
+        <LoginPage
+          onNavigateHome={() => navigate('/')}
+          onLoginSuccess={() => navigate('/dashboard')}
+        />
+      );
+    }
+    return <AuthenticatedDashboard onNavigateHome={() => navigate('/')} />;
+  }
+
+  // 3. Path is / (or any other path) -> Public Landing Dashboard
+  return (
+    <LandingPage
+      onNavigate={navigate}
+      onLogin={() => navigate('/login')}
+      onGoToDashboard={() => navigate('/dashboard')}
+    />
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

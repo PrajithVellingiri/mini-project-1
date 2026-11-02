@@ -23,13 +23,16 @@ public class SimulationInitializationCoordinator implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(SimulationInitializationCoordinator.class);
 
     private final DatabaseSeeder databaseSeeder;
+    private final UserSeederService userSeederService;
     private final SimulationPersistenceService persistenceService;
     private final SimulationService simulationService;
 
     public SimulationInitializationCoordinator(DatabaseSeeder databaseSeeder,
+                                               UserSeederService userSeederService,
                                                SimulationPersistenceService persistenceService,
                                                SimulationService simulationService) {
         this.databaseSeeder = databaseSeeder;
+        this.userSeederService = userSeederService;
         this.persistenceService = persistenceService;
         this.simulationService = simulationService;
     }
@@ -41,6 +44,7 @@ public class SimulationInitializationCoordinator implements ApplicationRunner {
         // Step 1: Evaluate database and seed if empty
         log.info("[Bootstrap 1/3] Inspecting database state and seeding baseline if empty...");
         databaseSeeder.seedIfEmpty();
+        userSeederService.seedDemoUsersIfEnabled();
 
         // Step 2: Validate database integrity and load dataset
         log.info("[Bootstrap 2/3] Validating structural/relational database integrity and loading dataset...");

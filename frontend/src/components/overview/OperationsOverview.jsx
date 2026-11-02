@@ -1,5 +1,16 @@
 import StatCard from '../common/StatCard';
 import Badge from '../common/Badge';
+import {
+  Users,
+  Zap,
+  Bus,
+  MapPin,
+  Play,
+  CheckCircle2,
+  RotateCcw,
+  ArrowRight,
+  Clock,
+} from 'lucide-react';
 
 export default function OperationsOverview({
   summary = {},
@@ -11,6 +22,7 @@ export default function OperationsOverview({
   onCompleteAllTrips,
   onSelectTab,
   simLoading,
+  canReset = true,
 }) {
   const activeTripsList = trips.filter((t) => t.status === 'IN_PROGRESS');
   const availableBuses = buses.filter((b) => b.status === 'AVAILABLE' && b.availableSeats > 0);
@@ -26,7 +38,7 @@ export default function OperationsOverview({
           highlight={true}
           badgeText="Waiting"
           badgeVariant="orange"
-          icon="👥"
+          icon={<Users size={20} className="text-amber-500" />}
         />
         <StatCard
           title="Active Relief Trips"
@@ -34,7 +46,7 @@ export default function OperationsOverview({
           subtitle={`${summary.allocatedPassengers || 0} passengers boarded`}
           badgeText={activeTripsList.length > 0 ? 'En Route' : 'Idle'}
           badgeVariant={activeTripsList.length > 0 ? 'transit' : 'available'}
-          icon="⚡"
+          icon={<Zap size={20} className="text-indigo-500" />}
         />
         <StatCard
           title="Available Fleet"
@@ -42,7 +54,7 @@ export default function OperationsOverview({
           subtitle={`${buses.filter((b) => b.status === 'MAINTENANCE').length} in maintenance`}
           badgeText="Readiness"
           badgeVariant="available"
-          icon="🚌"
+          icon={<Bus size={20} className="text-emerald-500" />}
         />
         <StatCard
           title="Network Transit Stops"
@@ -50,7 +62,7 @@ export default function OperationsOverview({
           subtitle={`${summary.totalRoads || 38} directed road edges`}
           badgeText="1 Central Depot"
           badgeVariant="default"
-          icon="📍"
+          icon={<MapPin size={20} className="text-blue-500" />}
         />
       </div>
 
@@ -59,7 +71,7 @@ export default function OperationsOverview({
         <div className="banner-text">
           <h3 className="banner-heading">Simulation Dispatch Engine</h3>
           <p className="banner-sub">
-            Trigger greedy capacity-aware allocation passes or reset the deterministic dataset.
+            Trigger greedy capacity-aware allocation passes or manage operational fleet dispatches.
           </p>
         </div>
         <div className="banner-actions">
@@ -69,7 +81,8 @@ export default function OperationsOverview({
             disabled={simLoading || availableBuses.length === 0}
             title={availableBuses.length === 0 ? 'No buses currently available' : 'Dispatch available buses to highest priority demand'}
           >
-            {simLoading ? 'Dispatching...' : '▶ Run Allocation Pass'}
+            <Play size={15} />
+            <span>{simLoading ? 'Dispatching...' : 'Run Allocation Pass'}</span>
           </button>
           {activeTripsList.length > 0 && (
             <button
@@ -77,16 +90,21 @@ export default function OperationsOverview({
               onClick={onCompleteAllTrips}
               disabled={simLoading}
             >
-              ✓ Complete All Trips
+              <CheckCircle2 size={15} />
+              <span>Complete All Trips</span>
             </button>
           )}
-          <button
-            className="action-btn btn-reset"
-            onClick={onResetSimulation}
-            disabled={simLoading}
-          >
-            ↺ Reset Simulation
-          </button>
+          {canReset && (
+            <button
+              className="action-btn btn-reset"
+              onClick={onResetSimulation}
+              disabled={simLoading}
+              title="Restores the deterministic reference dataset (Admin only)"
+            >
+              <RotateCcw size={15} />
+              <span>Reset Simulation</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -100,7 +118,8 @@ export default function OperationsOverview({
               <span className="card-subtitle">Vehicles currently in transit</span>
             </div>
             <button className="view-all-link" onClick={() => onSelectTab('fleet')}>
-              View Fleet Console →
+              <span>View Fleet Console</span>
+              <ArrowRight size={14} className="inline ml-1" />
             </button>
           </div>
 
@@ -118,10 +137,16 @@ export default function OperationsOverview({
                   </div>
                   <div className="trip-card-mid">
                     <span className="trip-bus font-mono">{trip.busId} ({trip.busType})</span>
-                    <span className="trip-pax font-semibold text-orange">{trip.passengerCount} passengers</span>
+                    <span className="trip-pax font-semibold">{trip.boardedPassengerCount} Pax</span>
                   </div>
-                  <div className="trip-card-route font-mono">
-                    {trip.routeStopIds ? trip.routeStopIds.join(' → ') : trip.tripId}
+                  <div className="trip-card-route">
+                    <span className="route-endpoints">
+                      {trip.originStopId} &rarr; {trip.destinationStopId}
+                    </span>
+                    <span className="route-eta">
+                      <Clock size={12} className="inline mr-1" />
+                      {trip.estimatedTravelTimeMinutes}m
+                    </span>
                   </div>
                 </div>
               ))}
@@ -129,43 +154,43 @@ export default function OperationsOverview({
           )}
         </div>
 
-        {/* Top Waiting Corridors */}
+        {/* Top Waiting Passenger Demand */}
         <div className="overview-card">
           <div className="overview-card-header">
             <div>
-              <h4 className="card-title">Pending Demand Queue ({demands.length} Batches)</h4>
-              <span className="card-subtitle">Corridor FIFO + Priority Queue head batches</span>
+              <h4 className="card-title">Top Waiting Demand Queues ({demands.length})</h4>
+              <span className="card-subtitle">Aggregated by corridor in priority order</span>
             </div>
             <button className="view-all-link" onClick={() => onSelectTab('fleet')}>
-              Manage Demand →
+              <span>View Demand Queue</span>
+              <ArrowRight size={14} className="inline ml-1" />
             </button>
           </div>
 
-          <div className="demands-queue-table-wrapper">
-            <table className="custom-data-table mini-table">
-              <thead>
-                <tr>
-                  <th>Req ID</th>
-                  <th>Corridor</th>
-                  <th>Pax</th>
-                  <th>Arrival Rank</th>
-                </tr>
-              </thead>
-              <tbody>
-                {demands.slice(0, 5).map((d, index) => (
-                  <tr key={d.requestId}>
-                    <td className="font-mono">{d.requestId}</td>
-                    <td className="font-mono">{d.pickupStopId} → {d.destinationStopId}</td>
-                    <td className="font-semibold text-orange">{d.passengerCount}</td>
-                    <td>
-                      <span className="font-mono rank-badge">#{d.originalArrivalOrder}</span>
-                      {index === 0 && <span className="fifo-head-pill">Global Head</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {demands.length === 0 ? (
+            <div className="empty-overview-card">
+              <span>All passenger demand has been fully satisfied. System is clear.</span>
+            </div>
+          ) : (
+            <div className="mini-demand-list">
+              {demands.slice(0, 5).map((d) => (
+                <div key={d.requestId} className="mini-demand-row">
+                  <div className="demand-row-left">
+                    <span className="demand-req-id font-mono">{d.requestId}</span>
+                    <span className="demand-corridor">
+                      {d.pickupStopName || d.pickupStopId} &rarr; {d.destinationStopName || d.destinationStopId}
+                    </span>
+                  </div>
+                  <div className="demand-row-right">
+                    <span className="demand-pax-count font-mono">{d.passengerCount} passengers</span>
+                    <Badge variant={d.originalArrivalOrder === 0 ? 'orange' : 'default'}>
+                      {d.originalArrivalOrder === 0 ? 'Emergency' : `#${d.originalArrivalOrder}`}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

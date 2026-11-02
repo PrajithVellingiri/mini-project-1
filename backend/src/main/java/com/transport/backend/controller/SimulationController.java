@@ -6,6 +6,7 @@ import com.transport.backend.service.SimulationService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -29,6 +30,7 @@ public class SimulationController {
      * Returns full snapshot of stops, roads, buses, demand queue, trips, and summary metrics.
      */
     @GetMapping("/state")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER', 'DRIVER', 'PASSENGER')")
     public ResponseEntity<SimulationStateDto> getState() {
         return ResponseEntity.ok(simulationService.getState());
     }
@@ -38,6 +40,7 @@ public class SimulationController {
      * Executes capacity-aware allocation pass on current waiting demand.
      */
     @PostMapping("/run")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER')")
     public ResponseEntity<AllocationResult> runSimulation() {
         AllocationResult result = simulationService.runSimulation();
         return ResponseEntity.ok(result);
@@ -48,6 +51,7 @@ public class SimulationController {
      * Restores fresh deterministic initial dataset and returns the fresh state.
      */
     @PostMapping("/reset")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<SimulationStateDto> resetSimulation() {
         simulationService.resetSimulation();
         return ResponseEntity.ok(simulationService.getState());
@@ -58,6 +62,7 @@ public class SimulationController {
      * Simulates in-progress trips completing and positioning buses at destinations.
      */
     @PostMapping("/complete-trips")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER')")
     public ResponseEntity<SimulationStateDto> completeActiveTrips() {
         simulationService.completeAllActiveTrips();
         return ResponseEntity.ok(simulationService.getState());
@@ -68,6 +73,7 @@ public class SimulationController {
      * Completes an individual in-progress trip by ID.
      */
     @PostMapping("/trips/{tripId}/complete")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER', 'DRIVER')")
     public ResponseEntity<SimulationStateDto> completeSpecificTrip(@PathVariable("tripId") String tripId) {
         simulationService.completeTrip(tripId);
         return ResponseEntity.ok(simulationService.getState());
@@ -78,6 +84,7 @@ public class SimulationController {
      * Calculates minimum travel time route between two stops.
      */
     @GetMapping("/routes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER', 'DRIVER', 'PASSENGER')")
     public ResponseEntity<RouteResponseDto> getRoute(
             @RequestParam("source") String source,
             @RequestParam("destination") String destination,
@@ -92,6 +99,7 @@ public class SimulationController {
      * Updates road travel time via path parameters.
      */
     @PatchMapping("/roads/{fromId}/{toId}/travel-time")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER')")
     public ResponseEntity<Map<String, Object>> updateRoadTravelTimePath(
             @PathVariable("fromId") String fromId,
             @PathVariable("toId") String toId,
@@ -112,6 +120,7 @@ public class SimulationController {
      * Updates road travel time via request body.
      */
     @PatchMapping("/roads/travel-time")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER')")
     public ResponseEntity<Map<String, Object>> updateRoadTravelTimeBody(
             @Valid @RequestBody UpdateTravelTimeRequest request
     ) {
@@ -132,6 +141,7 @@ public class SimulationController {
      * Updates road availability (open or closed to all transit).
      */
     @PatchMapping("/roads/status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER')")
     public ResponseEntity<Map<String, Object>> updateRoadStatus(
             @Valid @RequestBody UpdateRoadStatusRequest request
     ) {
@@ -155,6 +165,7 @@ public class SimulationController {
      * Updates road availability via path parameters.
      */
     @PatchMapping("/roads/{fromId}/{toId}/status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER')")
     public ResponseEntity<Map<String, Object>> updateRoadStatusPath(
             @PathVariable("fromId") String fromId,
             @PathVariable("toId") String toId,
@@ -176,6 +187,7 @@ public class SimulationController {
      * Updates bus operational status.
      */
     @PatchMapping("/buses/{id}/status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER', 'DRIVER')")
     public ResponseEntity<Map<String, Object>> updateBusStatus(
             @PathVariable("id") String busId,
             @Valid @RequestBody BusStatusUpdateRequest request
@@ -193,6 +205,7 @@ public class SimulationController {
      * Dynamically creates and enqueues a new passenger demand batch.
      */
     @PostMapping("/demand")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER')")
     public ResponseEntity<Map<String, Object>> createDemand(@Valid @RequestBody CreateDemandRequest request) {
         var created = simulationService.createDemand(
                 request.pickupStopId(),
@@ -213,6 +226,7 @@ public class SimulationController {
      * Returns comprehensive operational, passenger conservation, fleet, and algorithmic telemetry analytics.
      */
     @GetMapping("/analytics")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER')")
     public ResponseEntity<AnalyticsResponseDto> getAnalytics() {
         return ResponseEntity.ok(simulationService.getAnalytics());
     }
@@ -222,6 +236,7 @@ public class SimulationController {
      * Triggers a breakdown workflow for the specified bus, de-boarding passengers and re-queuing emergency relief.
      */
     @PostMapping("/buses/{id}/breakdown")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER')")
     public ResponseEntity<BreakdownResponseDto> triggerBusBreakdown(@PathVariable("id") String busId) {
         BreakdownResponseDto response = simulationService.triggerBusBreakdown(busId);
         return ResponseEntity.ok(response);
@@ -232,6 +247,7 @@ public class SimulationController {
      * Restores a bus from maintenance back to available status.
      */
     @PostMapping("/buses/{id}/restore")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TRANSPORT_MANAGER', 'DRIVER')")
     public ResponseEntity<Map<String, Object>> restoreBus(@PathVariable("id") String busId) {
         Map<String, Object> response = simulationService.restoreBus(busId);
         return ResponseEntity.ok(response);

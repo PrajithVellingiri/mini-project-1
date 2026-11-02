@@ -3,10 +3,11 @@
 
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.1-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Spring Security](https://img.shields.io/badge/Spring%20Security-JWT%20RBAC-blueviolet.svg)](https://spring.io/projects/spring-security)
 [![React](https://img.shields.io/badge/React-19.2-blue.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8.3-purple.svg)](https://vitejs.dev/)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0.46-blue.svg)](https://www.mysql.com/)
-[![Tests](https://img.shields.io/badge/Tests-77%20Passed-success.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-112%20Passed-success.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)]()
 
 An interactive, production-ready urban transit management and route optimization system built for **college evaluation, algorithm demonstration, and public deployment**. 
@@ -93,32 +94,87 @@ The system rigorously proves and enforces four mathematical invariants across al
 
 ---
 
-## 4. REST API Documentation
+## 4. User Authentication & Role-Based Access Control (RBAC)
 
-The backend exposes **16 REST endpoints** supporting full simulation, interactive queries, and incident management:
+The application features an enterprise-grade, database-backed security architecture built with **Spring Security 6**, **JWT (HMAC-SHA256)**, and **BCrypt (12 rounds)** password hashing. All API endpoints enforce strict role boundaries with stateless session management.
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/health` | Health status and application metadata. |
-| `GET` | `/api/simulation/state` | Complete state snapshot (stops, roads, buses, demand queue, trips). |
-| `POST` | `/api/simulation/run` | Executes greedy capacity-aware allocation pass. |
-| `POST` | `/api/simulation/reset` | Resets in-memory state and restores baseline deterministic dataset. |
-| `POST` | `/api/simulation/complete-trips` | Completes all active trips and releases vehicles. |
-| `POST` | `/api/simulation/trips/{id}/complete` | Completes a specific trip and releases its assigned bus. |
-| `GET` | `/api/simulation/routes` | Computes Dijkstra shortest path with vehicle restrictions & telemetry ($\mu s$). |
-| `PATCH` | `/api/simulation/roads/travel-time` | Updates road travel time via JSON body. |
-| `PATCH` | `/api/simulation/roads/{from}/{to}/travel-time` | Updates road travel time via path parameters. |
-| `PATCH` | `/api/simulation/roads/status` | Toggles road availability (`open: true/false`, `bidirectional`). |
-| `PATCH` | `/api/simulation/roads/{from}/{to}/status` | Toggles road availability via path parameters. |
-| `PATCH` | `/api/simulation/buses/{id}/status` | Updates vehicle operational status (`AVAILABLE`, `MAINTENANCE`, `OUT_OF_SERVICE`). |
-| `POST` | `/api/simulation/demand` | Ingests a dynamic passenger crowd batch into the PriorityQueue. |
-| `GET` | `/api/simulation/analytics` | Returns real-time passenger conservation, fleet utilization, and Dijkstra profiler. |
-| `POST` | `/api/simulation/buses/{id}/breakdown` | Triggers roadside breakdown, de-boards passengers, and re-queues emergency relief. |
-| `POST` | `/api/simulation/buses/{id}/restore` | Restores bus from maintenance back to available fleet. |
+### A. Pre-Seeded Review Demo Accounts
+Four pre-configured review demo accounts are seeded into MySQL on first boot for one-click reviewer evaluation:
+
+| Role | Demo Email | Password | Primary Interface / Permissions |
+|:---|:---|:---|:---|
+| **`ADMIN`** | `admin@smarttransport.demo` | `Review@2026` | Full system access, all simulation controls, plus **User Management Console** (`/users`). |
+| **`TRANSPORT_MANAGER`** | `manager@smarttransport.demo` | `Review@2026` | Complete transit operations, road congestion/closures, fleet dispatch, simulation reset. |
+| **`DRIVER`** | `driver@smarttransport.demo` | `Review@2026` | **Driver Cockpit**: Vehicle selector, live trip manifest, trip completion, maintenance status. |
+| **`PASSENGER`** | `passenger@smarttransport.demo` | `Review@2026` | **Passenger Hub**: Network overview, station finder, Dijkstra route query, service alerts. |
+
+### B. Role-Permission Enforcement Matrix
+
+| Endpoint | HTTP Method | Public | `PASSENGER` | `DRIVER` | `TRANSPORT_MANAGER` | `ADMIN` |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `/api/health` | `GET` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `/api/auth/login` | `POST` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `/api/auth/me` | `GET` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `/api/auth/logout` | `POST` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `/api/simulation/state` | `GET` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `/api/simulation/routes` | `GET` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `/api/simulation/analytics` | `GET` | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `/api/simulation/run` | `POST` | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `/api/simulation/reset` | `POST` | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `/api/simulation/complete-trips` | `POST` | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `/api/simulation/trips/{id}/complete` | `POST` | ❌ | ❌ | ✅ | ✅ | ✅ |
+| `/api/simulation/roads/**` | `PATCH` | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `/api/simulation/buses/{id}/status` | `PATCH` | ❌ | ❌ | ✅ | ✅ | ✅ |
+| `/api/simulation/demand` | `POST` | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `/api/simulation/buses/{id}/breakdown` | `POST` | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `/api/simulation/buses/{id}/restore` | `POST` | ❌ | ❌ | ✅ | ✅ | ✅ |
+| `/api/users/**` (CRUD, status, reset) | `*` | ❌ | ❌ | ❌ | ❌ | ✅ |
+
+### C. Admin User Management Console
+Administrators have access to a dedicated `/users` management interface featuring:
+- **Search & Filter**: Real-time filtering by user name, email, role, or active status.
+- **User Creation**: Dialog to create new accounts with email format validation and password complexity checks.
+- **Role Editing**: Modify user roles (`PASSENGER`, `DRIVER`, `TRANSPORT_MANAGER`, `ADMIN`).
+- **Status Toggling**: Instant activation/deactivation of accounts with immediate token invalidation.
+- **Password Reset**: Direct administrator password override modal.
+- **Safety Guards**: Self-protection (admins cannot disable or delete their own active account) and last-admin guard (system prevents demoting or disabling the sole active administrator).
 
 ---
 
-## 5. Local Development Setup & VS Code Port Forwarding Guide
+## 5. REST API Documentation
+
+The backend exposes **24 REST endpoints** supporting authentication, user administration, simulation, and incident management:
+
+| Method | Endpoint | Access Role | Description |
+|---|---|---|---|
+| `GET` | `/api/health` | Public | Health status and application metadata. |
+| `POST` | `/api/auth/login` | Public | Authenticates credentials and issues signed JWT Bearer token. |
+| `GET` | `/api/auth/me` | Authenticated | Returns profile of currently authenticated user. |
+| `POST` | `/api/auth/logout` | Authenticated | Stateless token logout hook. |
+| `GET` | `/api/users` | `ADMIN` | Lists all users with optional role, enabled status, and search query filters. |
+| `POST` | `/api/users` | `ADMIN` | Creates a new user with BCrypt hashed password. |
+| `PUT` | `/api/users/{id}` | `ADMIN` | Updates user full name and role assignment. |
+| `PATCH` | `/api/users/{id}/status` | `ADMIN` | Toggles user enabled status (`true`/`false`). |
+| `POST` | `/api/users/{id}/reset-password` | `ADMIN` | Overrides password for a specific user. |
+| `GET` | `/api/simulation/state` | All Roles | Complete state snapshot (stops, roads, buses, demand queue, trips). |
+| `POST` | `/api/simulation/run` | Manager / Admin | Executes greedy capacity-aware allocation pass. |
+| `POST` | `/api/simulation/reset` | Manager / Admin | Resets in-memory state and restores baseline deterministic dataset. |
+| `POST` | `/api/simulation/complete-trips` | Manager / Admin | Completes all active trips and releases vehicles. |
+| `POST` | `/api/simulation/trips/{id}/complete` | Driver / Mgr / Admin | Completes a specific trip and releases its assigned bus. |
+| `GET` | `/api/simulation/routes` | All Roles | Computes Dijkstra shortest path with vehicle restrictions & telemetry ($\mu s$). |
+| `PATCH` | `/api/simulation/roads/travel-time` | Manager / Admin | Updates road travel time via JSON body. |
+| `PATCH` | `/api/simulation/roads/{from}/{to}/travel-time` | Manager / Admin | Updates road travel time via path parameters. |
+| `PATCH` | `/api/simulation/roads/status` | Manager / Admin | Toggles road availability (`open: true/false`, `bidirectional`). |
+| `PATCH` | `/api/simulation/roads/{from}/{to}/status` | Manager / Admin | Toggles road availability via path parameters. |
+| `PATCH` | `/api/simulation/buses/{id}/status` | Driver / Mgr / Admin | Updates vehicle operational status (`AVAILABLE`, `MAINTENANCE`, `OUT_OF_SERVICE`). |
+| `POST` | `/api/simulation/demand` | Manager / Admin | Ingests a dynamic passenger crowd batch into the PriorityQueue. |
+| `GET` | `/api/simulation/analytics` | Manager / Admin | Returns real-time passenger conservation, fleet utilization, and Dijkstra profiler. |
+| `POST` | `/api/simulation/buses/{id}/breakdown` | Manager / Admin | Triggers roadside breakdown, de-boards passengers, and re-queues emergency relief. |
+| `POST` | `/api/simulation/buses/{id}/restore` | Driver / Mgr / Admin | Restores bus from maintenance back to available fleet. |
+
+---
+
+## 6. Local Development Setup & VS Code Port Forwarding Guide
 
 ### Prerequisites
 - **JDK 21** installed (`java -version` returns 21+).
@@ -288,16 +344,22 @@ cd backend
 .\mvnw.cmd test
 ```
 **Results**:
-- 77 unit, persistence, and controller tests passing (0 failures, 0 errors).
-- Tested suites: `RoadNetworkTest`, `RoutePlannerTest`, `DemandQueueServiceTest`, `AllocationServiceTest`, `SimulationControllerTest`, `DatabaseSeederTest`, `SimulationPersistenceHydrationTest`, `BackendApplicationTests`.
+- **112 automated unit, integration, persistence, and security tests passing (0 failures, 0 errors)**.
+- Tested suites:
+  - `AuthControllerTest` (10 tests: login for 4 roles, invalid password, unknown user, disabled account, token validation, me endpoint).
+  - `UserSecurityRbacTest` (12 tests: unauthenticated 401s, passenger restrictions, driver capabilities, manager operations, admin full access).
+  - `UserManagementTest` (8 tests: listing with filter/search, user creation, duplicate email rejection, role updating, status toggling, self-protection, password reset).
+  - `RoadNetworkTest`, `RoutePlannerTest`, `DemandQueueServiceTest`, `AllocationServiceTest`, `SimulationControllerTest`, `DatabaseSeederTest`, `SimulationPersistenceHydrationTest`, `BackendApplicationTests`.
 
-Build the frontend bundle:
+Build and lint the frontend bundle:
 ```powershell
 cd frontend
+npm run lint
 npm run build
 ```
 **Results**:
-- 27 modules compiled in 220ms with 0 errors.
+- Oxlint: 0 errors across all 19 frontend files.
+- Vite: Production bundle compiled cleanly in 418ms with 0 errors.
 
 ---
 
@@ -316,37 +378,45 @@ smart-transport/
 │   ├── Dockerfile                             # Multi-stage optimized JRE container
 │   ├── .env.example                           # Backend environment variables
 │   ├── mvnw / mvnw.cmd                        # Maven wrapper binaries
-│   ├── pom.xml                                # Dependencies: Spring Web, JPA, MySQL, H2
+│   ├── pom.xml                                # Spring Boot, Security, JJWT, JPA, MySQL, H2
 │   └── src/
 │       ├── main/java/com/transport/backend/
-│       │   ├── config/                        # CORS, DatabaseSeeder, StartupCoordinator
-│       │   ├── controller/                    # SimulationController (15 REST APIs), Health
-│       │   ├── dto/                           # State, Route, Analytics, Breakdown, Telemetry DTOs
-│       │   ├── entity/                        # 8 JPA entities mapping to MySQL schema
-│       │   ├── model/                         # Pure domain models (Bus, Stop, Road, RouteResult)
+│       │   ├── config/                        # CORS, DatabaseSeeder, StartupCoordinator, UserSeeder
+│       │   ├── controller/                    # AuthController, UserController, SimulationController, Health
+│       │   ├── dto/                           # Auth DTOs, User DTOs, State, Route, Analytics, Telemetry
+│       │   ├── entity/                        # UserEntity, Bus, Stop, Road, Trip, Demand, Relief
+│       │   ├── model/                         # Pure domain models (Bus, Stop, Road, RouteResult, Role)
 │       │   ├── network/                       # RoadNetwork directed graph model
 │       │   ├── policy/                        # PriorityQueue ranking strategies
-│       │   ├── repository/                    # Spring Data JPA repositories
-│       │   └── service/                       # RoutePlanner, DemandQueue, Allocation, Persistence
-│       └── test/java/com/transport/backend/   # 77 automated unit & integration test suites
+│       │   ├── repository/                    # UserRepository and 8 simulation repositories
+│       │   ├── security/                      # JwtService, JwtAuthFilter, CustomUserDetailsService, SecurityConfig
+│       │   └── service/                       # UserService, RoutePlanner, DemandQueue, Allocation, Persistence
+│       └── test/java/com/transport/backend/   # 112 automated unit, integration & security test suites
 │
 ├── frontend/                                  # React 19 + Vite 8 Single-Page Application
 │   ├── vercel.json                            # Vercel SPA routing rewrite configuration
 │   ├── .env.example                           # Frontend environment variables
 │   ├── vite.config.js                         # Vite build & local dev proxy setup
 │   └── src/
-│       ├── api/client.js                      # Centralized API client with VITE_API_BASE_URL
+│       ├── api/client.js                      # Centralized API client with JWT interceptor & auth endpoints
+│       ├── context/                           # AuthContext with role validation & token storage
 │       ├── components/
-│       │   ├── common/                        # Navbar, Badge, StatCard
+│       │   ├── auth/                          # LoginPage with quick review login cards
+│       │   ├── admin/                         # UserManagement console (CRUD, status, password reset)
+│       │   ├── passenger/                     # PassengerHub transit view & route finder
+│       │   ├── driver/                        # DriverCockpit vehicle selector, manifest & completion
+│       │   ├── common/                        # Navbar with role badges & logout, StatCard, Badge, AccessDenied
 │       │   ├── overview/                      # OperationsOverview KPI cards & dispatch
 │       │   ├── network/                       # TransportationMap interactive SVG network
 │       │   ├── routing/                       # RouteOptimizationLab Dijkstra solver & telemetry
 │       │   ├── traffic/                       # TrafficConsole congestion & road closure toggles
 │       │   ├── fleet/                         # FleetDemandManager table, injector & breakdown
 │       │   └── analytics/                     # AnalyticsDashboard conservation equation & profiler
-│       ├── App.jsx / App.css                  # Responsive layout & charcoal/orange theme
+│       ├── App.jsx / App.css                  # Responsive layout & theme with role-tailored view routing
 │       └── main.jsx                           # React root mount
 │
 └── database/
-    └── smart_transport_db.sql                 # Complete MySQL 8.0.46 DDL schema and seed data
+    ├── smart_transport_db.sql                 # Baseline MySQL 8.0.46 DDL schema and seed data
+    └── migrations/
+        └── V2__add_users_table.sql            # Additive migration for users table
 ```
